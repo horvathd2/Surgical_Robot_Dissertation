@@ -9,9 +9,14 @@
 #ifndef SENSOR_H_
 #define SENSOR_H_
 
-#include <avr/io.h>
-#include <avr/interrupt.h>
+#include "config.h"
 
-void SENSORS_init_interrupt(void);
+void setup_ext_sensors(void);
+
+void ADC_init(void);
+
+uint16_t ADC_read(uint8_t channel);
+
+float read_current(uint8_t channel, uint8_t sample_size);
 
 #endif /* SENSOR_H_ */

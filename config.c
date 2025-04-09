@@ -30,6 +30,15 @@ void pin_low(volatile uint8_t *port, uint8_t pin) {
 	*port &= ~(1 << pin);
 }
 
+void setup_micros(void){
+	cli();
+
+	TCCR3B |= (1 << CS30);
+	TIMSK3 |= (1 << TOIE3);
+
+	sei();
+}
+
 uint32_t micros() {
 	uint32_t overflows, timer_value;
 

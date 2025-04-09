@@ -19,7 +19,7 @@ main.d main.o: .././main.c .././config.h \
  c:\program\ files\ (x86)\atmel\studio\7.0\toolchain\avr8\avr8-gnu-toolchain\avr\include\stdio.h \
  c:\program\ files\ (x86)\atmel\studio\7.0\toolchain\avr8\avr8-gnu-toolchain\lib\gcc\avr\5.4.0\include\stdarg.h \
  c:\program\ files\ (x86)\atmel\studio\7.0\toolchain\avr8\avr8-gnu-toolchain\avr\include\stdlib.h \
- .././uart.h .././motor.h
+ .././uart.h .././motor.h .././sensor.h
 
 .././config.h:
 
@@ -66,3 +66,5 @@ c:\program\ files\ (x86)\atmel\studio\7.0\toolchain\avr8\avr8-gnu-toolchain\avr\
 .././uart.h:
 
 .././motor.h:
+
+.././sensor.h:

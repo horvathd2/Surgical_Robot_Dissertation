@@ -5,9 +5,11 @@
  * Author : H.Daniel
  */
 
+
 #include "config.h"
 #include "uart.h"
 #include "motor.h"
+#include "sensor.h"
 
 volatile int32_t motor1_currentPos = 0;
 volatile int32_t motor2_currentPos = 0;
@@ -15,12 +17,33 @@ volatile int32_t motor3_currentPos = 0;
 volatile int32_t motor4_currentPos = 0;
 
 volatile char read[100];
-volatile uint8_t rx_index = 0;         // Buffer position
-volatile uint8_t data_ready = 0;       // Flag: 1 when a full string is received
+volatile uint8_t rx_index	= 0;         // Buffer position
+volatile uint8_t data_ready	= 0;       // Flag: 1 when a full string is received
 
-char tobesent[100];
-int32_t setpoint = 3500;
-uint8_t connected = 0;
+char response[100];
+char command[100];
+char *token;
+
+int32_t setpoint1	= 0;
+int32_t setpoint2	= 0;
+int32_t setpoint3	= 0;
+uint8_t start_s		= 0;
+uint8_t connected	= 0;
+uint8_t homing		= 0;
+uint8_t homed1		= 0;
+uint8_t homed2		= 0;
+
+volatile uint8_t limit1		= 0;
+volatile uint8_t limit2		= 0;
+volatile uint8_t limit3		= 0;
+
+float current_motor1 = 0;
+float current_motor2 = 0;
+
+Motor basemotor1;
+Motor basemotor2;
+Motor micromotor3;
+Motor micromotor4;
 
 //-------- ENCODERS ---------
 ISR(INT0_vect){ // A2 MOTOR 2 (PH3 PH4) - DIRECTION & PWM PINS
@@ -33,59 +56,43 @@ ISR(INT0_vect){ // A2 MOTOR 2 (PH3 PH4) - DIRECTION & PWM PINS
 
 ISR(INT1_vect){ // A1 MOTOR 1 (PH5 PH6) - DIRECTION & PWM PINS
 	if (PINB & (1 << PB5)) {
-		motor1_currentPos++;  // If B is high while A changes, increment ticks
+		motor1_currentPos++;  
 	} else {
-		motor1_currentPos--;  // If B is low while A changes, decrement ticks
+		motor1_currentPos--;  
 	}
 }
 
 ISR(INT2_vect){ // A4 MOTOR 4 (PL0 PL1) - DIRECTION & PB6 - PWM
 	if (PIND & (1 << PD6)) {
-		motor4_currentPos--;  // If B is high while A changes, increment ticks
+		motor4_currentPos++;  
 	} else {
-		motor4_currentPos++;  // If B is low while A changes, decrement ticks
+		motor4_currentPos--;  
 	}
 }
 
 ISR(INT3_vect){ // A3 MOTOR 3 (PL2 PL3) - DIRECTION & PB7 - PWM
 	if (PIND & (1 << PD7)) {
-		motor3_currentPos++;  // If B is high while A changes, increment ticks
+		motor3_currentPos++;  
 	} else {
-		motor3_currentPos--;  // If B is low while A changes, decrement ticks
+		motor3_currentPos--;  
 	}
 }
 
 //-------- SENSORS ---------
 ISR(INT4_vect){ // SENSOR 4
-	if (PINE & (1 << PINE4)) {
-		PORTA |= (1 << PA1);
-	} else {
-		PORTA &= ~(1 << PA1);
-	}
+	limit1 = 1;
 }
 
 ISR(INT5_vect){ // SENSOR 3
-	if (PINE & (1 << PINE5)) {
-		PORTA |= (1 << PA1);
-	} else {
-		PORTA &= ~(1 << PA1);
-	}
+	limit2 = 1;
 }
  
 ISR(INT6_vect){ // SENSOR 2
-	if (PINE & (1 << PINE6)) {
-		PORTA |= (1 << PA1);
-	} else {
-		PORTA &= ~(1 << PA1);
-	}
+	limit2 = 1;
 }
 
 ISR(INT7_vect){ // SENSOR 1
-	if (PINE & (1 << PINE7)) {
-		PORTA |= (1 << PA1);
-	} else {
-		PORTA &= ~(1 << PA1);
-	}
+	limit3 = 1;
 }
 
 // Interrupt Service Routine (ISR) for USART Receive Complete
@@ -105,81 +112,112 @@ ISR(USART0_RX_vect) {
 
 int main(void)
 {
-	//CONFIGURE ENCODER A PINS AND SENSOR IN PINS AS INPUTS
-	DDRD &= ~((1 << DDD2) | (1 << DDD3) | (1 << DDD6) | (1 << DDD7));
-	DDRE &= ~((1 << DDE4) | (1 << DDE5) | (1 << DDE6) | (1 << DDE7));
-	DDRB &= ~((1 << DDB4) | (1 << DDB5));
+	//SETUP TIMER 3 FOR MICROSECOND COUNTING FROM BOOT & TIMER 3 INTERRUPT
+	setup_micros();
 
-	//DISABLE PULL-UP RESISTORS
-	PORTD &= ~((1 << PD2) | (1 << PD3) | (1 << PD6) | (1 << PD7));
-	PORTE &= ~((1 << PE4) | (1 << PE5) | (1 << PE6) | (1 << PE7));
-	PORTB &= ~((1 << PB4) | (1 << PB5));
-
-	//SETUP EXTERNAL INTERRUPTS
-	cli();
-
-	EICRA |= (1 << ISC00) | (1 << ISC01) | (1 << ISC10) | (1 << ISC11) | (1 << ISC20) | (1 << ISC21) | (1 << ISC30) | (1 << ISC31); //rising edge detect
-	EICRB |= (1 << ISC40) | (1 << ISC50) | (1 << ISC60) | (1 << ISC70); // any logical change for induction sensor external interrupts
-	EIMSK |= (1 << INT2)  | (1 << INT3)  | (1 << INT4);  // Enable interrupts
+	//SETUP LIMIT SENSORS
+	setup_ext_sensors();
 
 	//INITIALIZE SERIAL COMMUNICATION
 	USART0_init();
 
-	//Motor basemotor1 = init_motor(2, PORTH, OCR4C, OCR2B, DDRH, DDH5, DDH6, motor1_currentPos, &DDRH, DDH5, &OCR2B, 255);
-	//init_pid(&basemotor1, 1.5, 0, 0);
-	//Motor basemotor2 = init_motor(2, PORTH, OCR4A, OCR4B, DDRH, DDH3, DDH4, motor2_currentPos, &DDRH, DDH3, &OCR4B, 255);
-	//init_pid(&basemotor2, 1.5, 0, 0);
+	//INITIALIZE CURRENT SENSORS
+	ADC_init();
 
-	Motor micromotor3 = init_motor(1, &PORTL, PL2, PL3, &DDRL, DDL2, DDL3, motor3_currentPos, &DDRB, DDB6, &OCR1B, 255);
-	init_pid(&micromotor3, 1, 0.05, 0.0);
-	Motor micromotor4 = init_motor(1, &PORTL, PL0, PL1, &DDRL, DDL0, DDL1, motor4_currentPos, &DDRB, DDB7, &OCR0A, 255);
-	init_pid(&micromotor4, 1.2, 0, 0);
+	//INITIALIZE MOTORS
+	basemotor1 = init_motor(2, &PORTH, PH5, PH6, &DDRH, DDH5, DDH6, motor1_currentPos, &DDRH, DDH5, &OCR2B, &OCR4C, 200);
+	init_pid(&basemotor1, 1.0, 0.006, 0.0);
+	basemotor2 = init_motor(2, &PORTH, PH3, PH4, &DDRH, DDH3, DDH4, motor2_currentPos, &DDRH, DDH3, &OCR4B, &OCR4A, 200);
+	init_pid(&basemotor2, 1.0, 0.006, 0.0); //0000008
 
-	//SET THE TIMER COUNTER CONTROL REGISTERS TO FAST PWM MODE WITH CLEAR ON COMPARE MATCH
-	//MICRO MOTOR PWM SETUP
-	TCCR0A |= (1 << COM0A1) | (1 << WGM01)  | (1 << WGM00);
-	TCCR0B |=  (1 << CS00)  | (1 << WGM02);
-	
-	TCCR1A |= (1 << COM1B1) | (1 << WGM10); 
-	TCCR1B |=  (1 << CS10)  | (1 << WGM12);
+	micromotor3 = init_motor(1, &PORTL, PL2, PL3, &DDRL, DDL2, DDL3, motor3_currentPos, &DDRB, DDB6, &OCR1B, NULL, 255);
+	init_pid(&micromotor3, 1.2, 0.05, 0.0000008);
+	//micromotor4 = init_motor(1, &PORTL, PL0, PL1, &DDRL, DDL0, DDL1, motor4_currentPos, &DDRB, DDB7, &OCR0A, NULL, 255);
+	//init_pid(&micromotor4, 1.2, 0.05, 0.0000008);
 
-	//BASE MOTOR PWM SETUP
-	TCCR2A |= (1 << COM2B1) | (1 << WGM21)  | (1 << WGM20);
-	TCCR2B |=  (1 << CS20)  | (1 << WGM22);
+	//INITIALIZE MOTORS PWM
+	init_pwm();
 
-	TCCR4A |= (1 << COM4A1) | (1 << COM4B1) | (1 << COM4C1) | (1 << WGM40); 
-	TCCR4B |=  (1 << CS40)  | (1 << WGM42);
-
-	//SETUP TIMER 3 FOR MICROSECOND COUNTING FROM BOOT
-	TCCR3B |= (1 << CS30);
-	TIMSK3 |= (1 << TOIE3);
-
-	sei();
+	//SETUP RELAY PIN
+	DDRF  |= (1 << DDF7);
 
     while (1) 
     {
-		//BASE MOTOR 1
-		//OCR4C = 200;
-		//OCR2B = 0;
+		//*************************************************
+		// FOR CURRENT SENSING AND LIMITING
 
-		//BASE MOTOR 2
-		//OCR4A = 200;
-		//OCR4B = 0;
+		// EITHER RUN EVERY CYCLE WITHOUT FOR (5 SAMPLES = 5 CYCLES = 50ms) SAMPLES++;
+		// IF SAMPLES == 100 THEN GET AVERAGE VALUE OF CURRENT FOR PWM
+		// AND THEN COMPARE TO CHECK IF CURRENT IS GREATER THAN LIMIT
+		// FINALLY RESET SAMPLES = 0
 
-		if(strcmp(read, "ST") == 0) connected = 1;
-		else if(strcmp(read, "SO") == 0) connected = 0;
+		// ADD HISTERESHYS!!!!!!!!!!!!!!!!
 
-		if(connected){ // IMPLEMENT DATA READY CHECKING
-			sscanf(read, "%ld", &setpoint);
-			//setpoint = atoi(read);
-			move_abs(&micromotor3, setpoint, motor3_currentPos);
+		// MAY BE BETTER TO USE JUST A FOR() LOOP
+		// MORE EFFICIENT AND CAN USE MORE SAMPLES PER CYCLE
 
-			sprintf(tobesent,"%ld", micromotor3.pid.us_time);
-			strcat(tobesent, "\n");
-			USART0_send_string(tobesent);
-		}//else stop(&micromotor3, micromotor3.portdirpin, micromotor3.dirpin1, micromotor3.dirpin2);
+		//*************************************************
+		
+		if(!connected) if(strcmp(read, "conn") == 0){connected = 1; USART0_send_string("ackc\n");}
+		if(connected){
+			if(strcmp(read, "disc") == 0){connected = 0; USART0_send_string("ackd\n");}
 
-		_delay_ms(10);
+			token = strtok(read, "/");
+			if (token != NULL) strcpy(command, token);
+
+			token = strtok(NULL, "/");
+			if (token != NULL) setpoint1 = atoi(token);
+
+			token = strtok(NULL, "/");
+			if (token != NULL) setpoint2 = atoi(token);
+
+			token = strtok(NULL, "/");
+			if (token != NULL) setpoint3 = atoi(token);
+			
+			if(strcmp(command, "HM") == 0){homing = 1; start_s = 0;}
+			else if(strcmp(command, "HS") == 0) homing = 0;
+
+			if(strcmp(command, "ST") == 0){start_s = 1; homing = 0;}
+			else if(strcmp(command, "SO") == 0) start_s = 0;
+
+			if(homing){ //MODIFY!!!!!
+				home_motor(&basemotor1);
+				if(homed1){
+					home_motor(&basemotor2);
+					if(homed2){
+						USART0_send_string("ackhomed\n");
+						homing = 0;
+					}
+				}
+			}
+
+			if(start_s){
+				// IMPLEMENT DATA READY CHECKING
+
+				if(PINE & (1 << PE4)) {limit1 = 0; move_abs(&basemotor1, setpoint1, motor1_currentPos);}
+				else stop(&basemotor1);
+
+				if((PINE & (1 << PE5)) && (PINE & (1 << PE6))) {limit2 = 0; move_abs(&basemotor2, setpoint2, motor2_currentPos);}
+				else stop(&basemotor2);
+
+				move_abs(&micromotor3, setpoint3, motor3_currentPos);
+
+				current_motor1 = read_current(6,400);
+				//sprintf(response,"%ld", motor1_currentPos);
+				//strcat(response, "- pos1 \n");
+				//USART0_send_string(response);
+
+				dtostrf(current_motor1, 6, 4, response);
+				strcat(response, "\n");
+				USART0_send_string(response);
+			}else{
+				stop(&basemotor1);
+				stop(&basemotor2);
+				stop(&micromotor3);
+			}
+		}
+		
+		_delay_ms(5);
     }
 	return(0);
 }
@@ -200,3 +238,11 @@ int main(void)
 	//DDRL |= (1 << DDL1); //A2 MOTOR4
 	//DDRL |= (1 << DDL2); //B1 MOTOR3
 	//DDRL |= (1 << DDL3); //B2 MOTOR3
+
+	//BASE MOTOR 1
+	//OCR4C = 200;
+	//OCR2B = 0;
+
+	//BASE MOTOR 2
+	//OCR4A = 200;
+	//OCR4B = 0;
