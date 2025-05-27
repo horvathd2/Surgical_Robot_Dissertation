@@ -17,7 +17,7 @@ volatile int32_t motor3_currentPos = 0;
 volatile int32_t motor4_currentPos = 0;
 
 volatile char read[100];
-volatile uint8_t rx_index	= 0;         // Buffer position
+volatile uint8_t rx_index	= 0;       // Buffer position
 volatile uint8_t data_ready	= 0;       // Flag: 1 when a full string is received
 
 char response[100];
@@ -30,8 +30,8 @@ int32_t setpoint3	= 0;
 uint8_t start_s		= 0;
 uint8_t connected	= 0;
 uint8_t homing		= 0;
-uint8_t homed1		= 0;
-uint8_t homed2		= 0;
+uint8_t homing1		= 1;
+uint8_t homing2		= 0;
 
 volatile uint8_t limit1		= 0;
 volatile uint8_t limit2		= 0;
@@ -46,31 +46,15 @@ Motor micromotor3;
 Motor micromotor4;
 
 //-------- ENCODERS ---------
-ISR(INT0_vect){ // A2 MOTOR 2 (PH3 PH4) - DIRECTION & PWM PINS
-	if (PINB & (1 << PB4)) {
-		motor2_currentPos++;  // If B is high while A changes, increment ticks
-	} else {
-		motor2_currentPos--;  // If B is low while A changes, decrement ticks
-	}
-}
-
-ISR(INT1_vect){ // A1 MOTOR 1 (PH5 PH6) - DIRECTION & PWM PINS
-	if (PINB & (1 << PB5)) {
-		motor1_currentPos++;  
-	} else {
-		motor1_currentPos--;  
-	}
-}
-
-ISR(INT2_vect){ // A4 MOTOR 4 (PL0 PL1) - DIRECTION & PB6 - PWM
+ISR(INT0_vect){ // A4 MOTOR 4 (PL0 PL1) - DIRECTION & PB6 - PWM
 	if (PIND & (1 << PD6)) {
-		motor4_currentPos++;  
+		motor4_currentPos++;  // If B is high while A changes, increment ticks
 	} else {
-		motor4_currentPos--;  
+		motor4_currentPos--;  // If B is low while A changes, decrement ticks
 	}
 }
 
-ISR(INT3_vect){ // A3 MOTOR 3 (PL2 PL3) - DIRECTION & PB7 - PWM
+ISR(INT1_vect){ // A3 MOTOR 3 (PL2 PL3) - DIRECTION & PB7 - PWM
 	if (PIND & (1 << PD7)) {
 		motor3_currentPos++;  
 	} else {
@@ -78,17 +62,43 @@ ISR(INT3_vect){ // A3 MOTOR 3 (PL2 PL3) - DIRECTION & PB7 - PWM
 	}
 }
 
+ISR(INT2_vect){ // A2 MOTOR 2 (PH3 PH4) - DIRECTION & PWM PINS
+	if (PINB & (1 << PB5)) {
+		motor2_currentPos++;  
+	} else {
+		motor2_currentPos--;  
+	}
+}
+
+ISR(INT3_vect){ // A1 MOTOR 1 (PH5 PH6) - DIRECTION & PWM PINS
+	if (PINB & (1 << PB4)) {
+		motor1_currentPos++;  
+	} else {
+		motor1_currentPos--;  
+	}
+}
+
 //-------- SENSORS ---------
 ISR(INT4_vect){ // SENSOR 4
 	limit1 = 1;
+	if(homing){
+		homing1 = 0;
+		homing2 = 1;
+	}
 }
 
 ISR(INT5_vect){ // SENSOR 3
 	limit2 = 1;
+	if(homing){
+		homing2 = 0;
+	}
 }
  
 ISR(INT6_vect){ // SENSOR 2
 	limit2 = 1;
+	if(homing){
+		homing2 = 0;
+	}
 }
 
 ISR(INT7_vect){ // SENSOR 1
@@ -125,45 +135,42 @@ int main(void)
 	ADC_init();
 
 	//INITIALIZE MOTORS
-	basemotor1 = init_motor(2, &PORTH, PH5, PH6, &DDRH, DDH5, DDH6, motor1_currentPos, &DDRH, DDH5, &OCR2B, &OCR4C, 200);
-	init_pid(&basemotor1, 1.0, 0.006, 0.0);
-	basemotor2 = init_motor(2, &PORTH, PH3, PH4, &DDRH, DDH3, DDH4, motor2_currentPos, &DDRH, DDH3, &OCR4B, &OCR4A, 200);
-	init_pid(&basemotor2, 1.0, 0.006, 0.0); //0000008
+	basemotor1 = init_motor(2, &PORTH, PH5, PH6, &DDRH, DDH5, DDH6, &DDRH, DDH5, &OCR2B, &OCR4C, 180);
+	init_pid(&basemotor1, 1.0, 0.0, 0.0); //0.006, 0.00000008
+	basemotor2 = init_motor(2, &PORTH, PH3, PH4, &DDRH, DDH3, DDH4, &DDRH, DDH3, &OCR4B, &OCR4A, 180);
+	init_pid(&basemotor2, 1.0, 0.0, 0.0); //0000008
 
-	micromotor3 = init_motor(1, &PORTL, PL2, PL3, &DDRL, DDL2, DDL3, motor3_currentPos, &DDRB, DDB6, &OCR1B, NULL, 255);
+	micromotor3 = init_motor(1, &PORTL, PL2, PL3, &DDRL, DDL2, DDL3, &DDRB, DDB6, &OCR1B, NULL, 180);
 	init_pid(&micromotor3, 1.2, 0.05, 0.0000008);
-	//micromotor4 = init_motor(1, &PORTL, PL0, PL1, &DDRL, DDL0, DDL1, motor4_currentPos, &DDRB, DDB7, &OCR0A, NULL, 255);
+	//micromotor4 = init_motor(1, &PORTL, PL0, PL1, &DDRL, DDL0, DDL1, &DDRB, DDB7, &OCR0A, NULL, 255);
 	//init_pid(&micromotor4, 1.2, 0.05, 0.0000008);
 
 	//INITIALIZE MOTORS PWM
 	init_pwm();
 
 	//SETUP RELAY PIN
-	DDRF  |= (1 << DDF7);
+	DDRF |= (1 << DDF7);
 
     while (1) 
-    {
-		//*************************************************
-		// FOR CURRENT SENSING AND LIMITING
-
-		// EITHER RUN EVERY CYCLE WITHOUT FOR (5 SAMPLES = 5 CYCLES = 50ms) SAMPLES++;
-		// IF SAMPLES == 100 THEN GET AVERAGE VALUE OF CURRENT FOR PWM
-		// AND THEN COMPARE TO CHECK IF CURRENT IS GREATER THAN LIMIT
-		// FINALLY RESET SAMPLES = 0
-
-		// ADD HISTERESHYS!!!!!!!!!!!!!!!!
-
-		// MAY BE BETTER TO USE JUST A FOR() LOOP
-		// MORE EFFICIENT AND CAN USE MORE SAMPLES PER CYCLE
-
-		//*************************************************
-		
+    {	
 		if(!connected) if(strcmp(read, "conn") == 0){connected = 1; USART0_send_string("ackc\n");}
 		if(connected){
 			if(strcmp(read, "disc") == 0){connected = 0; USART0_send_string("ackd\n");}
 
 			token = strtok(read, "/");
 			if (token != NULL) strcpy(command, token);
+
+			if(strcmp(command, "HM") == 0){homing = 1; start_s = 0;}
+			else if(strcmp(command, "HS") == 0) homing = 0;
+
+			if(strcmp(command, "ST") == 0){start_s = 1; homing = 0;}
+			else if(strcmp(command, "SO") == 0) start_s = 0;
+
+			//if(strcmp(command, "CM1") == 0) current_motor1 = 6.0;
+			//else if(strcmp(command, "CM1D") == 0) current_motor1 = 0.2;
+
+			//if(strcmp(command, "CM2") == 0) current_motor2 = 6.0;
+			//else if(strcmp(command, "CM2D") == 0) current_motor2 = 0.2;
 
 			token = strtok(NULL, "/");
 			if (token != NULL) setpoint1 = atoi(token);
@@ -173,51 +180,51 @@ int main(void)
 
 			token = strtok(NULL, "/");
 			if (token != NULL) setpoint3 = atoi(token);
-			
-			if(strcmp(command, "HM") == 0){homing = 1; start_s = 0;}
-			else if(strcmp(command, "HS") == 0) homing = 0;
 
-			if(strcmp(command, "ST") == 0){start_s = 1; homing = 0;}
-			else if(strcmp(command, "SO") == 0) start_s = 0;
+			if(homing){ 
+				set_max_speed(&basemotor1, 80);
+				set_max_speed(&basemotor2, 80);
 
-			if(homing){ //MODIFY!!!!!
-				home_motor(&basemotor1);
-				if(homed1){
-					home_motor(&basemotor2);
-					if(homed2){
-						USART0_send_string("ackhomed\n");
-						homing = 0;
-					}
-				}
+				if(homing1) {
+					USART0_send_string("hominh1\n");
+					move_abs(&basemotor1, -20000, motor1_currentPos, current_motor1);
+					 
+				}else{ stop(&basemotor1); motor1_currentPos = 0; }
+				if(homing2) {
+					USART0_send_string("hominh2\n");
+					move_abs(&basemotor2, -20000, motor2_currentPos, current_motor2);
+					
+				}else{ stop(&basemotor2); motor2_currentPos = 0; }
+				if(!homing1 && !homing2){ homing = 0; USART0_send_string("ackh\n"); }
 			}
 
 			if(start_s){
 				// IMPLEMENT DATA READY CHECKING
+				//current_motor1 = read_current(6,400);
+				//current_motor2 = read_current(7,400);
 
-				if(PINE & (1 << PE4)) {limit1 = 0; move_abs(&basemotor1, setpoint1, motor1_currentPos);}
+				if(PINE & (1 << PE4)) {limit1 = 0; move_abs(&basemotor1, setpoint1, motor1_currentPos, current_motor1);}
 				else stop(&basemotor1);
 
-				if((PINE & (1 << PE5)) && (PINE & (1 << PE6))) {limit2 = 0; move_abs(&basemotor2, setpoint2, motor2_currentPos);}
+				if((PINE & (1 << PE5)) && (PINE & (1 << PE6))) {limit2 = 0; move_abs(&basemotor2, setpoint2, motor2_currentPos, current_motor2);}
 				else stop(&basemotor2);
 
-				move_abs(&micromotor3, setpoint3, motor3_currentPos);
+				move_abs(&micromotor3, setpoint3, motor3_currentPos, 0.0);
 
-				current_motor1 = read_current(6,400);
-				//sprintf(response,"%ld", motor1_currentPos);
-				//strcat(response, "- pos1 \n");
-				//USART0_send_string(response);
+				sprintf(response,"%d motor 1\n", basemotor1.pwm_value);
 
-				dtostrf(current_motor1, 6, 4, response);
-				strcat(response, "\n");
+				//dtostrf(current_motor2, 6, 4, response);
 				USART0_send_string(response);
-			}else{
+			}
+			
+			if(!start_s && !homing){
 				stop(&basemotor1);
 				stop(&basemotor2);
 				stop(&micromotor3);
 			}
 		}
 		
-		_delay_ms(5);
+		_delay_ms(10);
     }
 	return(0);
 }
@@ -240,9 +247,9 @@ int main(void)
 	//DDRL |= (1 << DDL3); //B2 MOTOR3
 
 	//BASE MOTOR 1
-	//OCR4C = 200;
-	//OCR2B = 0;
+	//OCR4C = 0;		//A2 NEGATIVE
+	//OCR2B = 200;		//A1 POSITIVE
 
 	//BASE MOTOR 2
-	//OCR4A = 200;
-	//OCR4B = 0;
+	//OCR4A = 0;		//B2 NEGATIVE
+	//OCR4B = 200;		//B1 POSITIVE

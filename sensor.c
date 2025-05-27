@@ -40,7 +40,7 @@ void ADC_init(void){														//PF6 ADC6 / PF7 ADC7
 	ADCSRA	|= (1 << ADEN) | (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);	// Enable the ADC
 	ADMUX	|= (1 << REFS0);												// Use AVCC for reference
 	ADMUX	&= ~(1 << REFS1);
-	ADCSRB &= ~(1 << MUX5);
+	ADCSRB	&= ~(1 << MUX5);
 }
 
 uint16_t ADC_read(uint8_t channel){
@@ -64,9 +64,6 @@ float read_current(uint8_t channel, uint8_t sample_size){
 		total_voltage += sample_voltage;
 	}
 												// ADD HISTERESHYS!!!!!!!!!!!!!!!!
-	//samples++;
-	//if(samples == 5){
-	//samples = 0;
 	avg_voltage = total_voltage/sample_size;
 	amp = (avg_voltage - 2510) / 181;
 	total_voltage = 0;
