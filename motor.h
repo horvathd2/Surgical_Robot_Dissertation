@@ -11,12 +11,15 @@
 
 #include "config.h"
 
-#define MIN_POS_DELTA			10
+#define MIN_POS_DELTA			50
 #define ACCEL_CONST				2
 #define DECEL_CONST				2
 #define CURRENT_LIMIT			5.0
 #define CURRENT_CHECK_MICROS	50000
 #define ENCODER_TICK_INTERVAL	3
+
+#define X_THRESHOLD 160
+#define Y_THRESHOLD 400
 
 struct PID{
 	int32_t prev_error;

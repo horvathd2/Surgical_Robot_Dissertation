@@ -69,11 +69,11 @@ void init_pwm(void){
 	TCCR1B |=  (1 << CS10)  | (1 << WGM12);
 
 	//BASE MOTOR PWM SETUP
-	TCCR2A |= (1 << COM2B1) | (1 << WGM20); //| (1 << WGM21);
+	TCCR2A |= (1 << COM2B1) | (1 << WGM20)	| (1 << WGM21);
 	TCCR2B |=  (1 << CS20);
 
 	TCCR4A |= (1 << COM4A1) | (1 << COM4B1) | (1 << COM4C1) | (1 << WGM40);
-	TCCR4B |=  (1 << CS40);  //| (1 << WGM42);
+	TCCR4B |=  (1 << CS40)	| (1 << WGM42);
 }
 
 void fwd(Motor *motor){
@@ -188,7 +188,9 @@ void move_abs(Motor *motor, volatile int32_t setpoint, volatile int32_t currentp
 	//else
 	//	motor->pwm_value = ((abs(motor->pid.ctrl_signal)/motor->pid.critical_delta)*motor->max_speed);
 
-	set_speed(motor);
+	motor->pwm_value = motor->pid.ctrl_signal;
+
+	//set_speed(motor);
 
 	update_stall(motor);
 
@@ -198,13 +200,13 @@ void move_abs(Motor *motor, volatile int32_t setpoint, volatile int32_t currentp
 		return;
 	}
 
-	if(motor->motortype == 1) *motor->ocr1 = motor->pwm_value;
+	if(motor->motortype == 1) *motor->ocr1 = abs(motor->pwm_value);
 
-	if(motor->pid.ctrl_signal > MIN_POS_DELTA) fwd(motor); // && !fwd_current
+	if(motor->pid.ctrl_signal > MIN_POS_DELTA) fwd(motor); 
 	else if(motor->pid.ctrl_signal < -MIN_POS_DELTA) bwd(motor);
 	else stop(motor);
 
-	motor->pid.prev_setpoint = motor->pid.setpoint;
+	//motor->pid.prev_setpoint = motor->pid.setpoint;
 }
 
 void set_max_speed(Motor *motor, uint8_t speed){

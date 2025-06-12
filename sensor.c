@@ -29,12 +29,37 @@ void setup_ext_sensors(void){
 	PORTE |=  ((1 << PE4) | (1 << PE5) | (1 << PE6) | (1 << PE7));
 
 	//SETUP EXTERNAL INTERRUPTS
-	EICRA |= (1 << ISC00) | (1 << ISC01) | (1 << ISC10) | (1 << ISC11) | (1 << ISC20) | (1 << ISC21) | (1 << ISC30) | (1 << ISC31); // rising edge detect
+	EICRA |= (1 << ISC00) | (1 << ISC01) | (1 << ISC10) | (1 << ISC11) | (1 << ISC20) | (1 << ISC21) | (1 << ISC30) | (1 << ISC31); // rising edge detect  
 	EICRB |= (1 << ISC40) | (1 << ISC50) | (1 << ISC60) | (1 << ISC70);																// any logical change
 	EIMSK |= (1 << INT0)  | (1 << INT1)  | (1 << INT2)  | (1 << INT3)  | (1 << INT4)  | (1 << INT5)  | (1 << INT6)  | (1 << INT7);  // Enable interrupts
 
+	//SETUP PCINT FOR ENCODER B CHANNELS FOR BASE MOTORS
+	//PCICR	|= (1 << PCIE0);       // Enable PCINT0 group (PB0–PB7)
+	//PCMSK0	|= (1 << PCINT4) | (1 << PCINT5);     // Enable PB4 for MOTOR 1 && PB5 for MOTOR 2
+
 	sei();
 }
+
+/*
+void update_encoder(volatile uint8_t* last_state, volatile int32_t* position,
+					volatile uint8_t* port_a, uint8_t pin_a,
+					volatile uint8_t* port_b, uint8_t pin_b) {
+	uint8_t a = (*port_a & (1 << pin_a)) ? 1 : 0;
+	uint8_t b = (*port_b & (1 << pin_b)) ? 1 : 0;
+	uint8_t curr = (a << 1) | b;
+	uint8_t combined = (*last_state << 2) | curr;
+
+	static const int8_t quad_table[16] = {
+		0, -1,  1,  0,
+		1,  0,  0, -1,
+		-1,  0,  0,  1,
+		0,  1, -1,  0
+	};
+
+	*position += quad_table[combined];
+	*last_state = curr;
+}
+*/
 
 void ADC_init(void){														//PF6 ADC6 / PF7 ADC7
 	ADCSRA	|= (1 << ADEN) | (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);	// Enable the ADC

@@ -13,6 +13,11 @@
 
 void setup_ext_sensors(void);
 
+/*
+void update_encoder(volatile uint8_t* last_state, volatile int32_t* position,
+					volatile uint8_t* port_a, uint8_t pin_a,
+					volatile uint8_t* port_b, uint8_t pin_b);*/
+
 void ADC_init(void);
 
 uint16_t ADC_read(uint8_t channel);
