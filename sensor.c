@@ -33,33 +33,8 @@ void setup_ext_sensors(void){
 	EICRB |= (1 << ISC40) | (1 << ISC50) | (1 << ISC60) | (1 << ISC70);																// any logical change
 	EIMSK |= (1 << INT0)  | (1 << INT1)  | (1 << INT2)  | (1 << INT3)  | (1 << INT4)  | (1 << INT5)  | (1 << INT6)  | (1 << INT7);  // Enable interrupts
 
-	//SETUP PCINT FOR ENCODER B CHANNELS FOR BASE MOTORS
-	//PCICR	|= (1 << PCIE0);       // Enable PCINT0 group (PB0–PB7)
-	//PCMSK0	|= (1 << PCINT4) | (1 << PCINT5);     // Enable PB4 for MOTOR 1 && PB5 for MOTOR 2
-
 	sei();
 }
-
-/*
-void update_encoder(volatile uint8_t* last_state, volatile int32_t* position,
-					volatile uint8_t* port_a, uint8_t pin_a,
-					volatile uint8_t* port_b, uint8_t pin_b) {
-	uint8_t a = (*port_a & (1 << pin_a)) ? 1 : 0;
-	uint8_t b = (*port_b & (1 << pin_b)) ? 1 : 0;
-	uint8_t curr = (a << 1) | b;
-	uint8_t combined = (*last_state << 2) | curr;
-
-	static const int8_t quad_table[16] = {
-		0, -1,  1,  0,
-		1,  0,  0, -1,
-		-1,  0,  0,  1,
-		0,  1, -1,  0
-	};
-
-	*position += quad_table[combined];
-	*last_state = curr;
-}
-*/
 
 void ADC_init(void){														//PF6 ADC6 / PF7 ADC7
 	ADCSRA	|= (1 << ADEN) | (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);	// Enable the ADC
@@ -68,9 +43,10 @@ void ADC_init(void){														//PF6 ADC6 / PF7 ADC7
 	ADCSRB	&= ~(1 << MUX5);
 }
 
-uint16_t ADC_read(uint8_t channel){
 	//MUX1 MUX2			- ACD6
 	//MUX0 MUX1 MUX2	- ACD7
+
+uint16_t ADC_read(uint8_t channel){
 	if(channel == 6)														// Select sampling channel for reading
 		ADMUX = (ADMUX & 0xF0) | 0x06;  // ADC6
 	else if (channel == 7)
@@ -85,10 +61,10 @@ uint16_t ADC_read(uint8_t channel){
 float read_current(uint8_t channel, uint8_t sample_size){
 	for (int i = 0; i < sample_size; i++) {
 		adcvalue = ADC_read(channel);
-		sample_voltage = (adcvalue * 5000.0) / 1024.0;
+		sample_voltage = (adcvalue * 5000.0) / 1023.0;
 		total_voltage += sample_voltage;
 	}
-												// ADD HISTERESHYS!!!!!!!!!!!!!!!!
+												
 	avg_voltage = total_voltage/sample_size;
 	amp = (avg_voltage - 2510) / 181;
 	total_voltage = 0;

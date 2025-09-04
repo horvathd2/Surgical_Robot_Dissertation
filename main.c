@@ -11,40 +11,39 @@
 #include "motor.h"
 #include "sensor.h"
 
-volatile int32_t motor1_currentPos = 0;
-volatile int32_t motor2_currentPos = 0;
-volatile int32_t motor3_currentPos = 0;
-volatile int32_t motor4_currentPos = 0;
+volatile int16_t motor1_currentPos = 0;
+volatile int16_t motor2_currentPos = 0;
+volatile int16_t motor3_currentPos = 0;
+volatile int16_t motor4_currentPos = 0;
 
-volatile uint8_t last_pinb_state	= 0;
-volatile uint8_t motor1_last_state	= 0;
-volatile uint8_t motor2_last_state	= 0;
-
-int32_t pos1, pos2, pos3, pos4;
+//int16_t pos1, pos2, pos3, pos4;
 
 volatile char read[100];
 volatile uint8_t rx_index	= 0;       // Buffer position
 volatile uint8_t data_ready	= 0;       // Flag: 1 when a full string is received
 
 char response[100];
+char received[100];
 char command[100];
 char *token = NULL;
 
-int32_t setpoint1	= 0;
-int32_t setpoint2	= 0;
-int32_t setpoint3	= 0;
+int16_t setpoint1	= 0;
+int16_t setpoint2	= 0;
+int16_t setpoint3	= 0;
+
 uint8_t start_s		= 0;
 uint8_t connected	= 0;
 uint8_t homing		= 0;
-uint8_t homing1		= 1;
-uint8_t homing2		= 0;
+
+volatile uint8_t homing1 = 1;
+volatile uint8_t homing2 = 0;
 
 volatile uint8_t limit1	= 0;
 volatile uint8_t limit2	= 0;
 volatile uint8_t limit3	= 0;
 
-float current_motor1 = 0;
-float current_motor2 = 0;
+float current_motor1 = 0.0;
+float current_motor2 = 0.0;
 
 Motor basemotor1;
 Motor basemotor2;
@@ -69,40 +68,20 @@ ISR(INT1_vect){ // A3 MOTOR 3 (PL2 PL3) - DIRECTION & PB7 - PWM
 }
 
 ISR(INT2_vect){ // A2 MOTOR 2 (PH3 PH4) - DIRECTION & PWM PINS
-	
 	if (PINB & (1 << PB5)) {
-		motor2_currentPos++;  
+		motor2_currentPos++;
 	} else {
-		motor2_currentPos--;  
+		motor2_currentPos--;
 	}
-	//update_encoder(&motor2_last_state, &motor2_currentPos, &PINE, PE4, &PINB, PB5);
 }
 
 ISR(INT3_vect){ // A1 MOTOR 1 (PH5 PH6) - DIRECTION & PWM PINS
-	
 	if (PINB & (1 << PB4)) {
-		motor1_currentPos++;  
+		motor1_currentPos++;
 	} else {
-		motor1_currentPos--;  
-	}
-	//update_encoder(&motor1_last_state, &motor1_currentPos, &PIND, PD3, &PINB, PB4);
-}
-
-/*
-ISR(PCINT0_vect) {
-	uint8_t curr = PINB;
-	uint8_t changed = curr ^ last_pinb_state;
-	last_pinb_state = curr;
-
-	if (changed & (1 << PB4)) {
-		update_encoder(&motor1_last_state, &motor1_currentPos, &PIND, PD3, &PINB, PB4);
-	}
-
-	if (changed & (1 << PB5)) {
-		update_encoder(&motor2_last_state, &motor2_currentPos, &PINE, PE4, &PINB, PB5);
+		motor1_currentPos--;
 	}
 }
-*/
 
 //-------- SENSORS ---------
 ISR(INT4_vect){ // SENSOR 4
@@ -174,16 +153,17 @@ int main(void)
 	//INITIALIZE MOTORS PWM
 	init_pwm();
 
-	//SETUP RELAY PIN
-	DDRF |= (1 << DDF7);
+	//DEBUGGING LED
+	DDRK |= (1 << DDK0);
+	PORTK &= ~(1 << PK0);
 
     while (1) 
     {
-		ATOMIC_BLOCK(ATOMIC_RESTORESTATE) { // MOVE TO FUNCTION WHICH STORES THIS IN MOTOR->CURRENTPOS IN STRUCT
-			pos1 = motor1_currentPos;
-			pos2 = motor2_currentPos;
-			pos3 = motor3_currentPos;
-			pos4 = motor4_currentPos;
+		ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+			basemotor1.pid.current_pos	= motor1_currentPos;
+			basemotor2.pid.current_pos	= motor2_currentPos;
+			micromotor3.pid.current_pos = motor3_currentPos;
+			//micromotor4.pid.current_pos = motor4_currentPos;
 		}
 			
 		if(!connected) if(strcmp(read, "conn") == 0){connected = 1; USART0_send_string("ackc\n");}
@@ -194,64 +174,59 @@ int main(void)
 			if (token != NULL) strcpy(command, token);
 
 			if(strcmp(command, "HM") == 0){homing = 1; start_s = 0;}
-			else if(strcmp(command, "HS") == 0) homing = 0;
+			else if(strcmp(command, "SO") == 0) homing = 0;
 
 			if(strcmp(command, "ST") == 0){start_s = 1; homing = 0;}
 			else if(strcmp(command, "SO") == 0) start_s = 0;
 
-			//if(strcmp(command, "CM1") == 0) current_motor1 = 6.0;
-			//else if(strcmp(command, "CM1D") == 0) current_motor1 = 0.2;
-
-			//if(strcmp(command, "CM2") == 0) current_motor2 = 6.0;
-			//else if(strcmp(command, "CM2D") == 0) current_motor2 = 0.2;
-
 			// Store received values if they are within threshold range
 			token = strtok(NULL, "/");
-			if (token != NULL && abs(atoi(token)) <= X_THRESHOLD) setpoint1 = atoi(token);
+
+			if (token != NULL){
+				int16_t recv1 = atoi(token);
+				if(abs(recv1) <= X_THRESHOLD) setpoint1 = recv1;
+				else { 
+					if(recv1 < 0) setpoint1 = -X_THRESHOLD;
+					else setpoint1 = X_THRESHOLD;
+				}
+			}
 
 			token = strtok(NULL, "/");
-			if (token != NULL && abs(atoi(token)) <= Y_THRESHOLD) setpoint2 = atoi(token);
+
+			if (token != NULL){
+				int16_t recv2 = atoi(token);
+				if(abs(recv2) <= Y_THRESHOLD) setpoint2 = recv2;
+				else {
+					if(recv2 < 0) setpoint2 = -Y_THRESHOLD;
+					else setpoint2 = Y_THRESHOLD;
+				}
+			}
 
 			token = strtok(NULL, "/");
 			if (token != NULL) setpoint3 = atoi(token);
 
-			if(homing){ 
+			if(homing){
 				set_max_speed(&basemotor1, 60);
 				set_max_speed(&basemotor2, 60);
 
 				if(homing1) {
-					USART0_send_string("homing1\n");
-					move_abs(&basemotor1, -20000, pos1, current_motor1);
+					move_abs(&basemotor1, -20000, current_motor1);
 					 
-				}else{ stop(&basemotor1); motor1_currentPos = -130; }
+				}else{ stop(&basemotor1); motor1_currentPos = -200; }
 				if(homing2) {
-					USART0_send_string("homing2\n");
-					move_abs(&basemotor2, -20000, pos2, current_motor2);
+					move_abs(&basemotor2, -20000, current_motor2);
 					
 				}else{ stop(&basemotor2); motor2_currentPos = -340; }
-				if(!homing1 && !homing2){ homing = 0; USART0_send_string("ackh\n"); }
+				if(!homing1 && !homing2){ homing = 0; USART0_send_string("ackh\n"); homing1 = 1; homing2 = 0;}
 			}
 
 			if(start_s){
-				// IMPLEMENT DATA READY CHECKING
-				//current_motor1 = read_current(6, 300);
-				//current_motor2 = read_current(7, 300);
-
-				/*
-				if(PINE & (1 << PE4)) {limit1 = 0; move_abs(&basemotor1, setpoint1, pos1, current_motor1);}
-				else stop(&basemotor1);
-
-				if((PINE & (1 << PE5)) && (PINE & (1 << PE6))) {limit2 = 0; move_abs(&basemotor2, setpoint2, pos2, current_motor2);}
-				else stop(&basemotor2);*/
-
-				move_abs(&basemotor1, setpoint1, pos1, current_motor1);
-				move_abs(&basemotor2, setpoint2, pos2, current_motor2);
-				move_abs(&micromotor3, setpoint3, pos3, 0.0);
-
-				sprintf(response,"%ld motor 1\n", pos1);
-
-				//dtostrf(current_motor2, 6, 4, response);
-				USART0_send_string(response);
+				current_motor1 = read_current(6, 300);
+				current_motor2 = read_current(7, 300);
+				
+				move_abs(&basemotor1, setpoint1, current_motor1);
+				move_abs(&basemotor2, setpoint2, current_motor2);
+				move_abs(&micromotor3, setpoint3, 0.0);
 			}
 			
 			if(!start_s && !homing){
@@ -266,27 +241,34 @@ int main(void)
 	return(0);
 }
 
-	// SETUP DIRECTION & PWM PINS FOR BASE MOTORS
-	//DDRH |= (1 << DDH3); //B2 OC4A MOTOR2
-	//DDRH |= (1 << DDH4); //B1 OC4B MOTOR2
+//FOR DEBUGGING PLACE IN INF LOOP
+//sprintf(response,"%ld motor 1\n", pos1);
+//PRINT FLOATS AS STRINGS
+//dtostrf(current_motor2, 6, 4, response);
+//USART0_send_string(response);
 
-	//DDRH |= (1 << DDH5); //A2 OC4C MOTOR1
-	//DDRH |= (1 << DDH6); //A1 OC2B MOTOR1
+//sprintf(response,"%d motor 2\n", basemotor2.pid.current_pos);
+//USART0_send_string(response);
+				
+//dtostrf(basemotor2.pid.ctrl_signal, 6, 4, response);
+//USART0_send_string(response);
+//USART0_send_string("\r\n");
 
-	//MICRO MOTOR PWM PINS
-	//DDRB |= (1 << DDB6); //PWMB OC1B MOTOR3
-	//DDRB |= (1 << DDB7); //PWMA OC0A MOTOR4
+/*
+if(PINE & (1 << PE4) && basemotor1.moving_bwd){ //switch to moving_fwd if wrong
+	limit1 = 0; 
+	move_abs(&basemotor1, setpoint1, current_motor1);
+} else stop(&basemotor1);
 
-	//MICRO MOTOR DIRECTION PINS
-	//DDRL |= (1 << DDL0); //A1 MOTOR4
-	//DDRL |= (1 << DDL1); //A2 MOTOR4
-	//DDRL |= (1 << DDL2); //B1 MOTOR3
-	//DDRL |= (1 << DDL3); //B2 MOTOR3
+if(((PINE & (1 << PE5) == 0) && basemotor2.moving_bwd) || 
+	((PINE & (1 << PE6) == 0) && basemotor2.moving_fwd)) //switch to moving_fwd if wrong
+	stop(&basemotor2);
+else{
+	limit2 = 0;
+	move_abs(&basemotor2, setpoint2, current_motor2);
+}
 
-	//BASE MOTOR 1
-	//OCR4C = 0;		//A2 NEGATIVE
-	//OCR2B = 200;		//A1 POSITIVE
-
-	//BASE MOTOR 2
-	//OCR4A = 0;		//B2 NEGATIVE
-	//OCR4B = 200;		//B1 POSITIVE
+if((PINE & (1 << PE5)) && (PINE & (1 << PE6))) {
+	limit2 = 0; 
+	move_abs(&basemotor2, setpoint2, current_motor2);
+} else stop(&basemotor2);*/

@@ -37,7 +37,7 @@ Motor init_motor(uint8_t motortype, volatile uint8_t *portdirpin, uint8_t dirpin
 		//SET PWM PIN OUTPUTS
 		set_output(motor.ddrpwm, motor.pwmpin);
 	}		
-	else if(motortype == 2) motor.ticks_per_rev = 700; //BASE MOTOR
+	else if(motortype == 2) motor.ticks_per_rev = 2096; //BASE MOTOR
 
 	return motor;
 }
@@ -56,7 +56,7 @@ void init_pid(Motor *motor, float kp, float kd, float ki){
 	motor->pid.d_time			= 0;
 	motor->pid.prev_time		= 0;
 	motor->pid.last_pos			= 0;
-	motor->pid.prev_stall_time	= 0;
+	motor->pid.current_pos		= 0;
 }
 
 void init_pwm(void){
@@ -132,16 +132,6 @@ void calculatePID(Motor *motor){
 }
 
 void set_speed(Motor *motor){
-	/*if (abs(motor->pid.e_prop) < motor->pid.critical_delta) {
-		motor->dynamic_max_speed = motor->min_speed + (abs(motor->pid.e_prop) * (motor->max_speed - motor->min_speed)) / motor->pid.critical_delta;
-	} else {
-		motor->dynamic_max_speed = motor->max_speed;
-	}
-
-	// Clamp PID output to speed cap
-	if (motor->pwm_value > motor->dynamic_max_speed) motor->pwm_value = motor->dynamic_max_speed;
-	else if (motor->pwm_value < -motor->dynamic_max_speed) motor->pwm_value = -motor->dynamic_max_speed;
-	*/
 	if (motor->pid.ctrl_signal > motor->pwm_value + ACCEL_CONST) {
 		motor->pwm_value += ACCEL_CONST;  // Gradual acceleration
 	} else if ((motor->pid.ctrl_signal < motor->pwm_value - DECEL_CONST)) {
@@ -152,20 +142,6 @@ void set_speed(Motor *motor){
 }
 
 void update_stall(Motor *motor){
-	/*
-	uint64_t now = micros();
-	if (now - motor->pid.prev_stall_time >= CURRENT_CHECK_MICROS) {
-		int64_t delta = abs(motor->pid.current_pos - motor->pid.last_pos);
-
-		if (motor->current_draw > CURRENT_LIMIT && delta < ENCODER_TICK_INTERVAL) {
-			if (motor->pwm_value > 0) motor->stall_fwd		= 1;
-			else if (motor->pwm_value < 0) motor->stall_bwd	= 1;
-		}
-
-		motor->pid.prev_stall_time	= now;
-		motor->pid.last_pos			= motor->pid.current_pos;
-	}
-	*/
 	if (motor->current_draw > CURRENT_LIMIT) {
 		if (motor->moving_fwd) motor->stall_fwd			= 1;
 		else if (motor->moving_bwd) motor->stall_bwd	= 1;
@@ -176,21 +152,13 @@ void update_stall(Motor *motor){
 	if (motor->moving_fwd && motor->stall_bwd) motor->stall_bwd = 0;
 }
 
-void move_abs(Motor *motor, volatile int32_t setpoint, volatile int32_t currentpos, float current){
-	motor->pid.current_pos	= currentpos;
+void move_abs(Motor *motor, int16_t setpoint, float current){
 	motor->pid.setpoint		= setpoint;
 	motor->current_draw		= current;
 
 	calculatePID(motor);
 
-	//if(abs(motor->pid.ctrl_signal) > motor->pid.critical_delta)
-	//	motor->pwm_value = motor->max_speed;
-	//else
-	//	motor->pwm_value = ((abs(motor->pid.ctrl_signal)/motor->pid.critical_delta)*motor->max_speed);
-
 	motor->pwm_value = motor->pid.ctrl_signal;
-
-	//set_speed(motor);
 
 	update_stall(motor);
 
@@ -205,10 +173,15 @@ void move_abs(Motor *motor, volatile int32_t setpoint, volatile int32_t currentp
 	if(motor->pid.ctrl_signal > MIN_POS_DELTA) fwd(motor); 
 	else if(motor->pid.ctrl_signal < -MIN_POS_DELTA) bwd(motor);
 	else stop(motor);
-
-	//motor->pid.prev_setpoint = motor->pid.setpoint;
 }
 
 void set_max_speed(Motor *motor, uint8_t speed){
 	motor->max_speed = speed;
 }
+
+	//if(abs(motor->pid.ctrl_signal) > motor->pid.critical_delta)
+	//	motor->pwm_value = motor->max_speed;
+	//else
+	//	motor->pwm_value = ((abs(motor->pid.ctrl_signal)/motor->pid.critical_delta)*motor->max_speed);
+
+	//set_speed(motor);

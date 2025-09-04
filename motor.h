@@ -11,34 +11,32 @@
 
 #include "config.h"
 
-#define MIN_POS_DELTA			50
+#define MIN_POS_DELTA			40
 #define ACCEL_CONST				2
 #define DECEL_CONST				2
 #define CURRENT_LIMIT			5.0
 #define CURRENT_CHECK_MICROS	50000
 #define ENCODER_TICK_INTERVAL	3
 
-#define X_THRESHOLD 160
-#define Y_THRESHOLD 400
+#define X_THRESHOLD 200 //160
+#define Y_THRESHOLD 500 //400
 
 struct PID{
-	int32_t prev_error;
-	volatile int32_t current_pos;
-	int32_t last_pos;
-	volatile int32_t setpoint;
-	volatile int32_t prev_setpoint;
+	int16_t prev_error;
+	int16_t current_pos;
+	int16_t last_pos;
+	int16_t setpoint;
 	float e_prop;
 	float e_dot;
 	float e_int;
-	uint64_t us_time;
-	uint64_t d_time;
-	uint64_t prev_time;
-	uint64_t prev_stall_time;
 	float critical_delta;
 	float ctrl_signal;
 	float Kp;
 	float Kd;
 	float Ki;
+	uint32_t us_time;
+	uint32_t d_time;
+	uint32_t prev_time;
 };
 
 typedef struct motor{
@@ -58,11 +56,11 @@ typedef struct motor{
 	uint8_t stall_bwd;
 	uint8_t moving_fwd;
 	uint8_t moving_bwd;
-	float current_draw;
 	volatile uint16_t *ocr1;
 	volatile uint16_t *ocr2;
 	uint16_t ticks_per_rev;
 	int16_t pwm_value;
+	float current_draw;
 	struct PID pid;
 }Motor;
 
@@ -87,7 +85,7 @@ void set_speed(Motor *motor);
 
 void update_stall(Motor *motor);
 
-void move_abs(Motor *motor, volatile int32_t setpoint, volatile int32_t currentpos, float current);
+void move_abs(Motor *motor, int16_t setpoint, float current);
 
 void set_max_speed(Motor *motor, uint8_t speed);
 
