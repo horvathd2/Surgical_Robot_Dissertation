@@ -73,11 +73,41 @@ void init_pid(Motor *motor, float kp, float kd, float ki);
 
 void init_pwm(void);
 
-void fwd(Motor *motor);
+inline void fwd(Motor *motor){
+	motor->moving_fwd = 1;
+	motor->moving_bwd = 0;
+	if(motor->motortype == 1){			//MICROMOTOR
+		pin_high(motor->portdirpin, motor->dirpin1);
+		pin_low(motor->portdirpin, motor->dirpin2);
+		}else if(motor->motortype == 2){	//BASE MOTOR
+		*motor->ocr1 = abs(motor->pwm_value);
+		*motor->ocr2 = 0;
+	}
+}
 
-void bwd(Motor *motor);
+inline void bwd(Motor *motor){
+	motor->moving_fwd = 0;
+	motor->moving_bwd = 1;
+	if(motor->motortype == 1){			//MICROMOTOR
+		pin_low(motor->portdirpin, motor->dirpin1);
+		pin_high(motor->portdirpin, motor->dirpin2);
+		}else if(motor->motortype == 2){	//BASE MOTOR
+		*motor->ocr1 = 0;
+		*motor->ocr2 = abs(motor->pwm_value);
+	}
+}
 
-void stop(Motor *motor);
+inline void stop(Motor *motor){
+	motor->moving_fwd = 0;
+	motor->moving_bwd = 0;
+	if(motor->motortype == 1){			//MICROMOTOR
+		pin_low(motor->portdirpin, motor->dirpin1);
+		pin_low(motor->portdirpin, motor->dirpin2);
+		}else if(motor->motortype == 2){	//BASE MOTOR
+		*motor->ocr1 = 0;
+		*motor->ocr2 = 0;
+	}
+}
 
 void calculatePID(Motor *motor);
 

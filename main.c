@@ -115,7 +115,7 @@ ISR(USART0_RX_vect) {
 	char c = UDR0;  // Read received character
 
 	// If Enter key is received, mark the string as complete
-	if (c == '\n' || c == '\r') {
+	if (c == '\n') {
 		read[rx_index] = '\0';  // Null-terminate the string
 		data_ready = 1;  // Set flag indicating a complete string is available
 		rx_index = 0;    // Reset buffer index for the next message
@@ -167,79 +167,76 @@ int main(void)
 			//micromotor4.pid.current_pos = motor4_currentPos;
 		}
 		
-		if(data_ready){
-			if(!connected) if(strcmp(read, "conn") == 0){connected = 1; USART0_send_string("ackc\n");}
-			if(connected){
-				if(strcmp(read, "disc") == 0){connected = 0; USART0_send_string("ackd\n");}
+		if(!connected) if(strcmp(read, "conn") == 0){connected = 1; USART0_send_string("ackc\n");}
+		if(connected){
+			if(strcmp(read, "disc") == 0){connected = 0; USART0_send_string("ackd\n");}
 
-				token = strtok(read, "/");
-				if (token != NULL) strcpy(command, token);
+			token = strtok(read, "/");
+			if (token != NULL) strcpy(command, token);
 
-				if(strcmp(command, "HM") == 0){homing = 1; start_s = 0;}
-				else if(strcmp(command, "SO") == 0) homing = 0;
+			if(strcmp(command, "HM") == 0){homing = 1; start_s = 0;}
+			else if(strcmp(command, "SO") == 0) homing = 0;
 
-				if(strcmp(command, "ST") == 0){start_s = 1; homing = 0;}
-				else if(strcmp(command, "SO") == 0) start_s = 0;
+			if(strcmp(command, "ST") == 0){start_s = 1; homing = 0;}
+			else if(strcmp(command, "SO") == 0) start_s = 0;
 
-				// Store received values if they are within threshold range
-				token = strtok(NULL, "/");
+			// Store received values if they are within threshold range
+			token = strtok(NULL, "/");
 
-				if (token != NULL){
-					int16_t recv1 = atoi(token);
-					if(abs(recv1) <= X_THRESHOLD) setpoint1 = recv1;
-					else {
-						if(recv1 < 0) setpoint1 = -X_THRESHOLD;
-						else setpoint1 = X_THRESHOLD;
-					}
-				}
-
-				token = strtok(NULL, "/");
-
-				if (token != NULL){
-					int16_t recv2 = atoi(token);
-					if(abs(recv2) <= Y_THRESHOLD) setpoint2 = recv2;
-					else {
-						if(recv2 < 0) setpoint2 = -Y_THRESHOLD;
-						else setpoint2 = Y_THRESHOLD;
-					}
-				}
-
-				token = strtok(NULL, "/");
-				if (token != NULL) setpoint3 = atoi(token);
-
-				if(homing){
-					set_max_speed(&basemotor1, 60);
-					set_max_speed(&basemotor2, 60);
-
-					if(homing1) {
-						move_abs(&basemotor1, -20000, current_motor1);
-						
-					}else{ stop(&basemotor1); motor1_currentPos = -200; }
-					if(homing2) {
-						move_abs(&basemotor2, -20000, current_motor2);
-							
-					}else{ stop(&basemotor2); motor2_currentPos = -340; }
-					if(!homing1 && !homing2){ homing = 0; USART0_send_string("ackh\n"); homing1 = 1; homing2 = 0;}
-				}
-
-				if(start_s){
-					current_motor1 = read_current(6, 300);
-					current_motor2 = read_current(7, 300);
-							
-					move_abs(&basemotor1, setpoint1, current_motor1);
-					move_abs(&basemotor2, setpoint2, current_motor2);
-					move_abs(&micromotor3, setpoint3, 0.0);
-				}
-						
-				if(!start_s && !homing){
-					stop(&basemotor1);
-					stop(&basemotor2);
-					stop(&micromotor3);
+			if (token != NULL){
+				int16_t recv1 = atoi(token);
+				if(abs(recv1) <= X_THRESHOLD) setpoint1 = recv1;
+				else {
+					if(recv1 < 0) setpoint1 = -X_THRESHOLD;
+					else setpoint1 = X_THRESHOLD;
 				}
 			}
+
+			token = strtok(NULL, "/");
+
+			if (token != NULL){
+				int16_t recv2 = atoi(token);
+				if(abs(recv2) <= Y_THRESHOLD) setpoint2 = recv2;
+				else {
+					if(recv2 < 0) setpoint2 = -Y_THRESHOLD;
+					else setpoint2 = Y_THRESHOLD;
+				}
+			}
+
+			token = strtok(NULL, "/");
+			if (token != NULL) setpoint3 = atoi(token);
+
+			if(homing){
+				set_max_speed(&basemotor1, 60);
+				set_max_speed(&basemotor2, 60);
+
+				if(homing1) move_abs(&basemotor1, -20000, current_motor1);	
+				else stop(&basemotor1); motor1_currentPos = -200;
+				if(homing2) move_abs(&basemotor2, -20000, current_motor2);
+				else stop(&basemotor2); motor2_currentPos = -340; 
+				if(!homing1 && !homing2){ 
+					homing = 0; 
+					USART0_send_string("ackh\n"); 
+					homing1 = 1; homing2 = 0; 
+				}
+			}
+
+			if(start_s){
+				//current_motor1 = read_current(6, 300);
+				//current_motor2 = read_current(7, 300);
+						
+				move_abs(&basemotor1, setpoint1, current_motor1);
+				move_abs(&basemotor2, setpoint2, current_motor2);
+				move_abs(&micromotor3, setpoint3, 0.0);
+			}
+					
+			if(!start_s && !homing){
+				stop(&basemotor1);
+				stop(&basemotor2);
+				stop(&micromotor3);
+			}
 		}
-		
-		
+
 		_delay_ms(10);
     }
 	return(0);
