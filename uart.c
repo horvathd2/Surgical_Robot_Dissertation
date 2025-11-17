@@ -9,9 +9,15 @@
 
 void USART0_init(void){
 	//USART BAUD RATE SETUP
-	UBRR0H = (unsigned char) (BRC >> 8);
-	UBRR0L = (unsigned char) BRC;
+	UBRR0H = (uint8_t) (BRC >> 8);
+	UBRR0L = (uint8_t) BRC;
 	
+	//FLUSH UDR BUFFER BEFORE ENABLING
+	while (UCSR0A & (1 << RXC0)) (void)UDR0;
+
+	//SET 2X CLOCK FOR BETTER ACCURACY
+	UCSR0A |= (1 << U2X0);
+
 	//RX TX ENABLE
 	//UCSR0A = (1 << U2X0);
 	UCSR0B = (1 << RXEN0)  | (1 << TXEN0) | (1 << RXCIE0);

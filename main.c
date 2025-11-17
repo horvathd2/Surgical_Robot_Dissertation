@@ -111,6 +111,7 @@ ISR(INT7_vect){ // SENSOR 1
 }
 
 // Interrupt Service Routine (ISR) for USART Receive Complete
+/*
 ISR(USART0_RX_vect) {
 	char c = UDR0;  // Read received character
 
@@ -122,6 +123,24 @@ ISR(USART0_RX_vect) {
 	}else if (rx_index < 100 - 1) {
 		read[rx_index++] = c;  // Store character in buffer
 	}else{
+		rx_index = 0;
+	}
+}*/
+ISR(USART0_RX_vect) {
+	char c = UDR0;
+	if (data_ready) {
+		// Previous line not processed yet – drop input to avoid corruption.
+		// Optionally: you could set an overflow flag here for debugging.
+		return;
+	}
+	if (c == '\n') {
+		read[rx_index] = '\0';
+		data_ready = 1;
+		rx_index = 0;
+		} else if (rx_index < sizeof(read) - 1) {
+		read[rx_index++] = c;
+		} else {
+		// Overflow -> reset
 		rx_index = 0;
 	}
 }
@@ -166,12 +185,20 @@ int main(void)
 			micromotor3.pid.current_pos = motor3_currentPos;
 			//micromotor4.pid.current_pos = motor4_currentPos;
 		}
-		
-		if(!connected) if(strcmp(read, "conn") == 0){connected = 1; USART0_send_string("ackc\n");}
-		if(connected){
-			if(strcmp(read, "disc") == 0){connected = 0; USART0_send_string("ackd\n");}
 
-			token = strtok(read, "/");
+		if(data_ready){
+			ATOMIC_BLOCK(ATOMIC_RESTORESTATE){
+				strcpy(received, (char *)read);
+				data_ready = 0;
+			}
+			memset(read, 0, sizeof(read));
+		}
+		
+		if(!connected) if(strcmp(received, "conn") == 0){connected = 1; USART0_send_string("ackc\n");}
+		if(connected){
+			if(strcmp(received, "disc") == 0){connected = 0; USART0_send_string("ackd\n");}
+
+			token = strtok(received, "/");
 			if (token != NULL) strcpy(command, token);
 
 			if(strcmp(command, "HM") == 0){homing = 1; start_s = 0;}

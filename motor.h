@@ -26,14 +26,10 @@ struct PID{
 	int16_t current_pos;
 	int16_t last_pos;
 	int16_t setpoint;
-	float e_prop;
-	float e_dot;
-	float e_int;
+	float e_prop, e_dot, e_int;
 	float critical_delta;
 	float ctrl_signal;
-	float Kp;
-	float Kd;
-	float Ki;
+	float Kp, Kd, Ki;
 	uint32_t us_time;
 	uint32_t d_time;
 	uint32_t prev_time;
@@ -51,7 +47,6 @@ typedef struct motor{
 	uint8_t pwmpin;
 	uint8_t max_speed;
 	uint8_t min_speed;
-	uint8_t dynamic_max_speed;
 	uint8_t stall_fwd;
 	uint8_t stall_bwd;
 	uint8_t moving_fwd;
@@ -73,41 +68,11 @@ void init_pid(Motor *motor, float kp, float kd, float ki);
 
 void init_pwm(void);
 
-inline void fwd(Motor *motor){
-	motor->moving_fwd = 1;
-	motor->moving_bwd = 0;
-	if(motor->motortype == 1){			//MICROMOTOR
-		pin_high(motor->portdirpin, motor->dirpin1);
-		pin_low(motor->portdirpin, motor->dirpin2);
-		}else if(motor->motortype == 2){	//BASE MOTOR
-		*motor->ocr1 = abs(motor->pwm_value);
-		*motor->ocr2 = 0;
-	}
-}
+extern inline void fwd(Motor *motor);
 
-inline void bwd(Motor *motor){
-	motor->moving_fwd = 0;
-	motor->moving_bwd = 1;
-	if(motor->motortype == 1){			//MICROMOTOR
-		pin_low(motor->portdirpin, motor->dirpin1);
-		pin_high(motor->portdirpin, motor->dirpin2);
-		}else if(motor->motortype == 2){	//BASE MOTOR
-		*motor->ocr1 = 0;
-		*motor->ocr2 = abs(motor->pwm_value);
-	}
-}
+extern inline void bwd(Motor *motor);
 
-inline void stop(Motor *motor){
-	motor->moving_fwd = 0;
-	motor->moving_bwd = 0;
-	if(motor->motortype == 1){			//MICROMOTOR
-		pin_low(motor->portdirpin, motor->dirpin1);
-		pin_low(motor->portdirpin, motor->dirpin2);
-		}else if(motor->motortype == 2){	//BASE MOTOR
-		*motor->ocr1 = 0;
-		*motor->ocr2 = 0;
-	}
-}
+extern inline void stop(Motor *motor);
 
 void calculatePID(Motor *motor);
 
