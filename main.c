@@ -16,20 +16,38 @@ volatile int16_t motor2_currentPos = 0;
 volatile int16_t motor3_currentPos = 0;
 volatile int16_t motor4_currentPos = 0;
 
-//int16_t pos1, pos2, pos3, pos4;
+#define PACKET_SIZE 11
 
-volatile char read[100];
+typedef struct __attribute__((packed)) {
+	uint8_t  str;
+	uint8_t  cmd;
+	int16_t  sp1;
+	int16_t  sp2;
+	int16_t  sp3;
+	int16_t  sp4;
+	uint8_t  chksum;
+} SetpointPacket;
+
+typedef enum {
+	CMD_NOP     = 0x00,   // do nothing
+	CMD_CONN	= 0x01,   // start motion loop
+	CMD_DISC    = 0x02,   // stop motion loop
+	CMD_START   = 0x03,   // start motion loop
+	CMD_STOP    = 0x04,   // stop motion loop
+	CMD_HOME    = 0x05,   // begin homing routine
+	CMD_ZERO    = 0x06,   // zero encoder
+	CMD_SETSP   = 0x07    // update setpoints only
+} CommandType;
+
+SetpointPacket active_packet;
+
+volatile uint8_t rx_buffer[PACKET_SIZE];
 volatile uint8_t rx_index	= 0;       // Buffer position
 volatile uint8_t data_ready	= 0;       // Flag: 1 when a full string is received
 
 char response[100];
-char received[100];
-char command[100];
-char *token = NULL;
-
-int16_t setpoint1	= 0;
-int16_t setpoint2	= 0;
-int16_t setpoint3	= 0;
+uint8_t received[100];
+uint8_t command[100];
 
 uint8_t start_s		= 0;
 uint8_t connected	= 0;
@@ -110,39 +128,36 @@ ISR(INT7_vect){ // SENSOR 1
 	limit3 = 1;
 }
 
-// Interrupt Service Routine (ISR) for USART Receive Complete
-/*
 ISR(USART0_RX_vect) {
-	char c = UDR0;  // Read received character
+	uint8_t b = UDR0;
 
-	// If Enter key is received, mark the string as complete
-	if (c == '\n') {
-		read[rx_index] = '\0';  // Null-terminate the string
-		data_ready = 1;  // Set flag indicating a complete string is available
-		rx_index = 0;    // Reset buffer index for the next message
-	}else if (rx_index < 100 - 1) {
-		read[rx_index++] = c;  // Store character in buffer
-	}else{
-		rx_index = 0;
-	}
-}*/
-ISR(USART0_RX_vect) {
-	char c = UDR0;
-	if (data_ready) {
-		// Previous line not processed yet – drop input to avoid corruption.
-		// Optionally: you could set an overflow flag here for debugging.
+	// 1: Wait for start byte
+	if (rx_index == 0) {
+		if (b == 0xAA) {
+			rx_buffer[rx_index++] = b;
+		}
 		return;
 	}
-	if (c == '\n') {
-		read[rx_index] = '\0';
+
+	// 2: Store following bytes
+	rx_buffer[rx_index++] = b;
+
+	// 3: If packet completed, flag it
+	if (rx_index == PACKET_SIZE) {
+		rx_index = 0;
 		data_ready = 1;
-		rx_index = 0;
-		} else if (rx_index < sizeof(read) - 1) {
-		read[rx_index++] = c;
-		} else {
-		// Overflow -> reset
-		rx_index = 0;
 	}
+}
+
+uint8_t compute_checksum(uint8_t *data, uint8_t len) {
+	uint8_t c = 0;
+	for (uint8_t i = 0; i < len; i++)
+	c ^= data[i];
+	return c;
+}
+
+uint8_t validate_packet(uint8_t *buf) {
+	return compute_checksum(buf, PACKET_SIZE - 1) == buf[PACKET_SIZE - 1];
 }
 
 int main(void)
@@ -186,52 +201,28 @@ int main(void)
 			//micromotor4.pid.current_pos = motor4_currentPos;
 		}
 
-		if(data_ready){
-			ATOMIC_BLOCK(ATOMIC_RESTORESTATE){
-				strcpy(received, (char *)read);
-				data_ready = 0;
+		if (data_ready) {
+			cli();         
+			data_ready = 0;
+
+			uint8_t temp_buf[PACKET_SIZE];
+			memcpy(temp_buf, (void*)rx_buffer, PACKET_SIZE);
+			sei();                  
+
+			if (validate_packet(temp_buf)) {
+				memcpy(&active_packet, temp_buf, PACKET_SIZE);
 			}
-			memset(read, 0, sizeof(read));
 		}
 		
-		if(!connected) if(strcmp(received, "conn") == 0){connected = 1; USART0_send_string("ackc\n");}
+		if(!connected) if(active_packet.cmd == CMD_CONN){connected = 1; USART0_send_string("ackc\n");}
 		if(connected){
-			if(strcmp(received, "disc") == 0){connected = 0; USART0_send_string("ackd\n");}
+			if(active_packet.cmd == CMD_DISC){connected = 0; USART0_send_string("ackd\n");}
 
-			token = strtok(received, "/");
-			if (token != NULL) strcpy(command, token);
+			if(active_packet.cmd == CMD_HOME){homing = 1; start_s = 0;}
+			else if(active_packet.cmd == CMD_STOP) homing = 0;
 
-			if(strcmp(command, "HM") == 0){homing = 1; start_s = 0;}
-			else if(strcmp(command, "SO") == 0) homing = 0;
-
-			if(strcmp(command, "ST") == 0){start_s = 1; homing = 0;}
-			else if(strcmp(command, "SO") == 0) start_s = 0;
-
-			// Store received values if they are within threshold range
-			token = strtok(NULL, "/");
-
-			if (token != NULL){
-				int16_t recv1 = atoi(token);
-				if(abs(recv1) <= X_THRESHOLD) setpoint1 = recv1;
-				else {
-					if(recv1 < 0) setpoint1 = -X_THRESHOLD;
-					else setpoint1 = X_THRESHOLD;
-				}
-			}
-
-			token = strtok(NULL, "/");
-
-			if (token != NULL){
-				int16_t recv2 = atoi(token);
-				if(abs(recv2) <= Y_THRESHOLD) setpoint2 = recv2;
-				else {
-					if(recv2 < 0) setpoint2 = -Y_THRESHOLD;
-					else setpoint2 = Y_THRESHOLD;
-				}
-			}
-
-			token = strtok(NULL, "/");
-			if (token != NULL) setpoint3 = atoi(token);
+			if(active_packet.cmd == CMD_START){start_s = 1; homing = 0;}
+			else if(active_packet.cmd == CMD_STOP) start_s = 0;
 
 			if(homing){
 				set_max_speed(&basemotor1, 60);
@@ -252,9 +243,9 @@ int main(void)
 				//current_motor1 = read_current(6, 300);
 				//current_motor2 = read_current(7, 300);
 						
-				move_abs(&basemotor1, setpoint1, current_motor1);
-				move_abs(&basemotor2, setpoint2, current_motor2);
-				move_abs(&micromotor3, setpoint3, 0.0);
+				move_abs(&basemotor1, active_packet.sp1, current_motor1);
+				move_abs(&basemotor2, active_packet.sp2, current_motor2);
+				move_abs(&micromotor3, active_packet.sp3, 0.0);
 			}
 					
 			if(!start_s && !homing){
