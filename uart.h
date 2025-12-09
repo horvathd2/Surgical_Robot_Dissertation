@@ -12,10 +12,8 @@
 #include "config.h"
 
 #define BAUDR			9600
-#define BRC				((F_CPU/16/BAUDR)-1)
+#define BRC				((F_CPU/8/BAUDR)-1)
 #define RX_BUFFER_SIZE	128
-
-char serial_rx;
 
 void USART0_init(void);
 

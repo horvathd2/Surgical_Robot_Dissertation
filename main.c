@@ -26,7 +26,7 @@ typedef struct __attribute__((packed)) {
 	int16_t  sp3;
 	int16_t  sp4;
 	uint8_t  chksum;
-} SetpointPacket;
+} UART_packet;
 
 typedef enum {
 	CMD_NOP     = 0x00,   // do nothing
@@ -39,7 +39,7 @@ typedef enum {
 	CMD_SETSP   = 0x07    // update setpoints only
 } CommandType;
 
-SetpointPacket active_packet;
+UART_packet active_packet;
 
 volatile uint8_t rx_buffer[PACKET_SIZE];
 volatile uint8_t rx_index	= 0;       // Buffer position
@@ -131,18 +131,16 @@ ISR(INT7_vect){ // SENSOR 1
 ISR(USART0_RX_vect) {
 	uint8_t b = UDR0;
 
-	// 1: Wait for start byte
 	if (rx_index == 0) {
 		if (b == 0xAA) {
 			rx_buffer[rx_index++] = b;
+			PORTK |= (1 << PK0);
 		}
 		return;
 	}
 
-	// 2: Store following bytes
 	rx_buffer[rx_index++] = b;
 
-	// 3: If packet completed, flag it
 	if (rx_index == PACKET_SIZE) {
 		rx_index = 0;
 		data_ready = 1;
@@ -209,9 +207,9 @@ int main(void)
 			memcpy(temp_buf, (void*)rx_buffer, PACKET_SIZE);
 			sei();                  
 
-			if (validate_packet(temp_buf)) {
+			//if (validate_packet(temp_buf)) {
 				memcpy(&active_packet, temp_buf, PACKET_SIZE);
-			}
+			//}
 		}
 		
 		if(!connected) if(active_packet.cmd == CMD_CONN){connected = 1; USART0_send_string("ackc\n");}

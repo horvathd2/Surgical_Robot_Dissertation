@@ -19,7 +19,6 @@ void USART0_init(void){
 	UCSR0A |= (1 << U2X0);
 
 	//RX TX ENABLE
-	//UCSR0A = (1 << U2X0);
 	UCSR0B = (1 << RXEN0)  | (1 << TXEN0) | (1 << RXCIE0);
 	UCSR0C = (1 << UCSZ01) | (1 << UCSZ00);
 }

@@ -35,7 +35,7 @@ struct PID{
 	uint32_t prev_time;
 };
 
-typedef struct motor{
+typedef struct{
 	uint8_t motortype;
 	volatile uint8_t *ddreg;
 	uint8_t ddrpin1;
